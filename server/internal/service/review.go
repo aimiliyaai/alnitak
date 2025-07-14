@@ -53,7 +53,7 @@ func ReviewVideoApproved(ctx *gin.Context, reviewVideoReq dto.ReviewVideoReq) er
 
 	// 视频ID添加到redis中
 	video, _ := FindVideoById(reviewVideoReq.Vid)
-	cache.SetVideoId(video.PartitionId, video.ID)
+	cache.SetVideoId(global.VideoPartitionMap[video.PartitionId], video.ID)
 
 	tx.Commit()
 
