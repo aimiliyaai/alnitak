@@ -78,7 +78,7 @@ func CancelLikeArticle(ctx *gin.Context, likeReq dto.LikeArticleReq) error {
 func HasLikeArticle(ctx *gin.Context, articleId uint) (bool, error) {
 	userId := ctx.GetUint("userId")
 	like, err := FindLikeArticleByUid(articleId, userId)
-	if err != nil {
+	if err != nil && err != gorm.ErrRecordNotFound {
 		utils.ErrorLog("获取点赞信息失败", "like", err.Error())
 		return false, errors.New("获取失败")
 	}
