@@ -24,9 +24,11 @@
                     </li>
                     <li class="item more">
                       <el-dropdown>
-                        <el-icon size="16">
-                          <more-icon></more-icon>
-                        </el-icon>
+                        <el-button class="more-btn" plain>
+                          <el-icon size="16">
+                            <more-icon></more-icon>
+                          </el-icon>
+                        </el-button>
                         <template #dropdown>
                           <el-dropdown-menu>
                             <el-dropdown-item @click="modifyArticle(item.aid)">编辑</el-dropdown-item>
@@ -178,7 +180,7 @@ onBeforeMount(() => {
   padding: 0 18px 0;
   height: 100%;
   box-sizing: border-box;
-  background-color: #fff;
+  background-color: var(--bg-elev-1);
 
   .title {
     font-size: 18px;
@@ -207,7 +209,7 @@ onBeforeMount(() => {
 .content-wrapper {
   display: flex;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(228, 230, 235, 0.5);
+  border-bottom: 1px solid var(--border-color);
   width: 100%;
 
   .content-main {
@@ -219,20 +221,21 @@ onBeforeMount(() => {
       font-weight: 600;
       font-size: 16px;
       line-height: 24px;
-      color: #252933;
+      color: var(--font-primary-1);
       width: 100%;
       display: -webkit-box;
       overflow: hidden;
       text-overflow: ellipsis;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 1;
+      line-clamp: 1;
     }
 
     .abstract {
       min-height: 44px;
       margin-bottom: 4px;
       font-weight: 400;
-      color: #8a919f;
+      color: var(--font-primary-3);
       font-size: 13px;
       line-height: 22px;
       display: -webkit-box;
@@ -240,6 +243,7 @@ onBeforeMount(() => {
       text-overflow: ellipsis;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
     }
 
     .entry-footer {
@@ -262,7 +266,7 @@ onBeforeMount(() => {
           margin-right: 24px;
           font-size: 13px;
           line-height: 20px;
-          color: #8a919f;
+          color: var(--font-primary-3);
 
           span {
             height: 16px;
@@ -315,14 +319,14 @@ onBeforeMount(() => {
     }
   }
 
-  .cover {
+      .cover {
     flex: 0 0 auto;
     width: 108px;
     height: 72px;
     margin: 12px 0 0 24px;
-    background-color: #fff;
+        background-color: var(--bg-elev-1);
     border-radius: 4px;
-    border: 1px solid rgba(228, 230, 235, 0.5);
+        border: 1px solid var(--border-color);
   }
 }
 

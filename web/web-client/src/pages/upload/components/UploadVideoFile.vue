@@ -19,7 +19,7 @@
             <div class="title" v-if="modifyIndex !== index" @click="titleClick(item, index)">
               <span>{{ item.title || "未命名视频" }}</span>
             </div>
-            <el-input v-else ref="titleInput" v-model="modifyForm.title" maxlength="50" show-word-limit
+            <el-input v-else ref="titleInput" v-model="modifyForm.title" maxlength="100" show-word-limit
               @blur="modifyTitle(item)" />
           </div>
           <client-only>
@@ -192,7 +192,7 @@ watch(() => props.resources, (newVal) => {
   .title-text {
     margin: 0;
     font-size: 16px;
-    color: #212121;
+    color: var(--font-primary-1);
     font-weight: 600;
     line-height: 50px;
   }
@@ -267,7 +267,7 @@ watch(() => props.resources, (newVal) => {
         .remove-btn {
           display: none;
           font-size: 12px;
-          color: #61666d;
+          color: var(--font-primary-3);
           cursor: pointer;
 
           &:hover {
@@ -282,7 +282,7 @@ watch(() => props.resources, (newVal) => {
 
         .upload-status {
           display: block;
-          color: #61666d;
+          color: var(--font-primary-3);
           padding-bottom: 2px;
           font-size: 12px;
         }
@@ -291,7 +291,7 @@ watch(() => props.resources, (newVal) => {
           position: relative;
           width: 100%;
           height: 4px;
-          background-color: #efeff5;
+          background-color: var(--fill-1, #efeff5);
 
           .progress {
             position: absolute;

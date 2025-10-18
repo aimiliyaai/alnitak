@@ -13,15 +13,42 @@
       </el-icon>
       <p>{{ stat.collect }}</p>
     </div>
+    <!-- 分享按钮 -->
+    <div class="archive-item share-item">
+      <el-icon class="icon">
+        <share-icon></share-icon>
+      </el-icon>
+      <div class="share-popover">
+        <div class="share-popover-content">
+          <el-tabs v-model="shareTab">
+            <el-tab-pane label="分享链接" name="link">
+              <div class="embed-box">
+                <el-input v-model="shareUrl" name="share-url" readonly></el-input>
+                <el-button type="primary" @click="copyUrl">复制链接</el-button>
+              </div>
+            </el-tab-pane>
+            <el-tab-pane label="嵌入代码" name="embed">
+              <div class="embed-box">
+                <el-input v-model="embedCode" name="embed-code" readonly></el-input>
+                <el-button type="primary" @click="copyEmbed">复制嵌入代码</el-button>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </div>
+    </div>
     <collection-list v-if="showCollect" :vid="vid" @close="closeCollectionCard"></collection-list>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount } from 'vue';
-import { ElIcon } from 'element-plus';
+import { ref, onBeforeMount, computed, reactive } from 'vue';
+import { ElIcon, ElMessage } from 'element-plus';
+import { useRoute } from 'vue-router';
+import { statusCode } from '@/utils/status-code';
 import LikeIcon from "@/components/icons/LikeIcon.vue";
 import CollectIcon from "@/components/icons/CollectIcon.vue";
+import ShareIcon from '@/components/icons/ShareIcon.vue';
 import { getVideoArchiveStatAPI } from "@/api/archive";
 import { getLikeVideoStatusAPI, likeVideoAPI, cancelLikeVideoAPI } from "@/api/like";
 import { getCollectVideoStatusAPI } from '@/api/collect';
@@ -42,6 +69,53 @@ const archive = reactive({ // 是否点赞收藏
   hasCollect: false,
   hasLike: false
 })
+
+// 分享相关
+const shareTab = ref('link');
+
+// 使用 process.client 检查是否在客户端
+const shareUrl = computed(() => {
+  if (process.client) {
+    return window.location.href;
+  }
+  return '';
+});
+
+const route = useRoute();
+const embedCode = computed(() => {
+  if (process.client) {
+    const part = Number(route.query.p) || 1;
+    const url = window.location.origin + `/embed/video/${props.vid}` + (part > 1 ? `?p=${part}` : '');
+    return `<iframe src='${url}' width='800' height='450' frameborder='0' allowfullscreen></iframe>`;
+  }
+  return '';
+});
+
+const copyText = async (text: string, msg: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    ElMessage.success(msg);
+  } catch (e) {
+    // 降级处理
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      ElMessage.success(msg);
+    } catch (err) {
+      ElMessage.error('复制失败，请手动复制');
+    }
+    document.body.removeChild(textarea);
+  }
+};
+
+const copyUrl = () => copyText(shareUrl.value, '播放地址已复制');
+const copyEmbed = () => copyText(embedCode.value, '嵌入代码已复制');
 
 //获取点赞收藏关注信息
 const getArchiveStat = async () => {
@@ -94,7 +168,7 @@ const closeCollectionCard = (val: number) => {
     stat.value.collect--;
     archive.hasCollect = false;
   }
-  
+
   showCollect.value = false;
 }
 
@@ -116,10 +190,14 @@ onBeforeMount(async () => {
     user-select: none;
     margin-right: 20px;
 
-    i {
+    i,
+    .icon {
       font-size: 26px;
+      width: 26px;
+      height: 26px;
       line-height: 30px;
       cursor: pointer;
+      vertical-align: middle;
     }
 
     p {
@@ -139,6 +217,40 @@ onBeforeMount(async () => {
 
     .like-active {
       animation: scaleDraw .3s ease-in-out;
+    }
+  }
+
+  .share-item {
+    position: relative;
+
+    .share-popover {
+      display: none;
+      position: absolute;
+      bottom: 26px;
+      left: 0;
+      z-index: 100;
+
+      .share-popover-content {
+        margin-bottom: 10px;
+        background: var(--bg-elev-1);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 2px 8px var(--shadow-weak);
+        padding: 16px 20px 8px 20px;
+        min-width: 320px;
+        min-height: 120px;
+
+        .embed-box {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+      }
+    }
+
+    &:hover .share-popover {
+      display: block;
     }
   }
 }

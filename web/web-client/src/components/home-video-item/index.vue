@@ -34,8 +34,10 @@ const props = defineProps<{
   .img {
     position: relative;
     display: block;
-    height: auto; /* 让高度自动调整以保持比例 */
-    max-height: 160px; /* 最大高度限制 */
+    height: auto;
+    /* 让高度自动调整以保持比例 */
+    max-height: 160px;
+    /* 最大高度限制 */
     border-radius: 10px;
     overflow: hidden;
     cursor: pointer;
@@ -44,14 +46,15 @@ const props = defineProps<{
     img {
       width: 100%;
       height: 100%;
-	  object-fit: cover; /* 保持图片比例，裁剪超出的部分 */
+      object-fit: cover;
+      /* 保持图片比例，裁剪超出的部分 */
     }
 
     .duration {
       position: absolute;
-      bottom: 10px;
       right: 12px;
-      color: #fff;
+      bottom: 10px;
+      color: var(--font-primary-6);
       height: 20px;
       line-height: 20px;
       transition: opacity 0.3s;
@@ -68,7 +71,7 @@ const props = defineProps<{
 
     .title {
       height: 44px;
-      color: #18191c;
+      color: var(--font-primary-1);
       padding-right: 12px;
       font-size: 15px;
       line-height: 22px;
@@ -76,7 +79,9 @@ const props = defineProps<{
       text-overflow: ellipsis;
       display: -webkit-box;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       -webkit-box-orient: vertical;
+      word-break: break-all;
       font-weight: 500;
       cursor: pointer;
 
@@ -89,7 +94,7 @@ const props = defineProps<{
       display: flex;
       align-items: center;
       font-size: 13px;
-      color: #9499a0;
+      color: var(--font-primary-3);
       margin-top: 5px;
 
       .avatar {
@@ -103,7 +108,7 @@ const props = defineProps<{
         margin-left: 10px;
 
         .name {
-          color: #9499a0;
+          color: var(--font-primary-3);
 
           &:hover {
             color: var(--primary-color);

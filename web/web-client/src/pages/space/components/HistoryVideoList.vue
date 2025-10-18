@@ -1,13 +1,16 @@
 <template>
   <ul class="video-list">
     <li class="video-item" v-for="item in videoList">
-      <nuxt-link class="cover" :to="`/video/${item.vid}`">
+      <nuxt-link class="cover" :to="`/video/${item.vid}?p=${item.part}`">
         <img class="img" :src="getResourceUrl(item.cover)" />
       </nuxt-link>
-      <nuxt-link class="title" :to="`/video/${item.vid}`">{{ item.title }}</nuxt-link>
+      <nuxt-link class="title" :to="`/video/${item.vid}?p=${item.part}`">{{ item.title }}</nuxt-link>
       <div class="meta">
         <div class="play-count">
-          <span class="time">看到 {{ toDuration(item.time) }}</span>
+          <span class="time">
+            <template v-if="item.time === -1">已看完</template>
+            <template v-else>看到 {{ toDuration(item.time) }}</template>
+          </span>
         </div>
         <div class="date">{{ formatDate(item.updatedAt) }}</div>
       </div>
@@ -48,7 +51,7 @@ const props = defineProps<{
       overflow: hidden;
       position: relative;
       cursor: pointer;
-      background-color: #f9f9f9;
+      background-color: var(--fill-1, #f9f9f9);
 
       .img {
         width: 100%;
@@ -58,7 +61,7 @@ const props = defineProps<{
 
     .title {
       font-size: 12px;
-      color: #222222;
+      color: var(--font-primary-1);
       display: block;
       line-height: 20px;
       height: 38px;
@@ -74,7 +77,7 @@ const props = defineProps<{
     .meta {
       display: flex;
       align-items: center;
-      color: #999;
+      color: var(--font-primary-3);
       white-space: nowrap;
       margin-top: 5px;
       height: 16px;
@@ -86,13 +89,13 @@ const props = defineProps<{
         align-items: center;
 
         .time {
-          color: #999;
+          color: var(--font-primary-3);
           font-size: 12px;
         }
       }
 
       .date {
-        color: #999;
+        color: var(--font-primary-3);
         font-size: 12px;
       }
     }
