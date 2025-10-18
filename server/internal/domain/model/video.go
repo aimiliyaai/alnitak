@@ -4,7 +4,7 @@ import "gorm.io/gorm"
 
 type Video struct {
 	gorm.Model
-	Title       string  `gorm:"type:varchar(50);comment:标题;not null;index"`
+	Title       string  `gorm:"type:varchar(100);comment:标题;not null;index"`
 	Cover       string  `gorm:"type:varchar(255);cmment:封面图;not null"`
 	Desc        string  `gorm:"type:varchar(200);comment:视频简介;default:什么都没有~"`
 	Uid         uint    `gorm:"comment:用户ID;not null;index"`

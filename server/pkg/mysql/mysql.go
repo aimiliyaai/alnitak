@@ -15,9 +15,13 @@ var db *gorm.DB
 
 func Init(c config.Mysql) *gorm.DB {
 	dns := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?%s", c.Username, c.Password, c.Host, c.Port, c.Datasource, c.Param)
-	logger := zapgorm2.New(zap.L())
-	logger.SetAsDefault()
-	if mysqlClient, err := gorm.Open(mysql.Open(dns), &gorm.Config{Logger: logger}); err != nil {
+
+	// 配置zapgorm2，忽略ErrRecordNotFound错误
+	zapLogger := zapgorm2.New(zap.L())
+	zapLogger.SetAsDefault()
+	zapLogger.IgnoreRecordNotFoundError = true // 关键配置：忽略ErrRecordNotFound错误
+
+	if mysqlClient, err := gorm.Open(mysql.Open(dns), &gorm.Config{Logger: zapLogger}); err != nil {
 		utils.ErrorLog("mysql连接失败", "db", err.Error())
 		panic(err)
 	} else {

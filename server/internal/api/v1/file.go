@@ -85,7 +85,11 @@ func GetImgFile(ctx *gin.Context) {
 
 	// 不使用oss
 	redirect := global.Storage.GetObjectUrl("image/" + file)
-	fmt.Println("redirect", redirect, "image/"+file)
+
+	// 开发模式下打印重定向信息
+	if global.Config.Log.Mode == "dev" {
+		fmt.Println("redirect", redirect, "image/"+file)
+	}
 
 	// 设置缓存头，告知浏览器缓存一天
 	ctx.Header("Cache-Control", "public, max-age=86400, must-revalidate")

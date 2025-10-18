@@ -314,7 +314,13 @@ func GetRelatedVideoList(ctx *gin.Context, videoId uint) []vo.VideoResp {
 	videoIds = append(videoIds, authorVideoIds...)
 
 	// 查询同分区的7个视频（防止视频与同作者视频相同或者与当前视频相同）
-	for _, v := range cache.GetVideoIdByPartition(video.PartitionId, 7) {
+	// 获取主分区ID用于推荐
+	partitionId := video.PartitionId
+	if parentId, exists := global.VideoPartitionMap[video.PartitionId]; exists && parentId != 0 {
+		partitionId = parentId
+	}
+
+	for _, v := range cache.GetVideoIdByPartition(partitionId, 7) {
 		id := utils.StringToUint(v)
 		if id != videoId && !utils.IsUintInSlice(authorVideoIds, id) {
 			videoIds = append(videoIds, id)

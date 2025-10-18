@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"interastral-peace.com/alnitak/internal/domain/dto"
 	"interastral-peace.com/alnitak/internal/domain/model"
 	"interastral-peace.com/alnitak/internal/domain/vo"
@@ -56,7 +57,7 @@ func Collect(ctx *gin.Context, addCollectReq dto.AddCollectReq) error {
 func HasCollect(ctx *gin.Context, videoId uint) (bool, error) {
 	userId := ctx.GetUint("userId")
 	collect, err := FindCollectByUid(videoId, userId)
-	if err != nil {
+	if err != nil && err != gorm.ErrRecordNotFound {
 		utils.ErrorLog("获取收藏信息失败", "collect", err.Error())
 		return false, errors.New("获取失败")
 	}
