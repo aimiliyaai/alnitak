@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 	"interastral-peace.com/alnitak/internal/domain/dto"
+	"interastral-peace.com/alnitak/internal/domain/vo"
 	"interastral-peace.com/alnitak/internal/resp"
 	"interastral-peace.com/alnitak/internal/service"
 	"interastral-peace.com/alnitak/utils"
@@ -12,7 +13,13 @@ func GetUserInfo(ctx *gin.Context) {
 	userId := ctx.GetUint("userId")
 	user := service.GetUserInfo(userId)
 
-	resp.OkWithData(ctx, gin.H{"userInfo": user})
+	var ban *vo.BanResp
+	if user.Status == 1 {
+		b := service.FindUserLastBan(userId)
+		ban = &b
+	}
+
+	resp.OkWithData(ctx, gin.H{"userInfo": user, "ban": ban})
 }
 
 func EditUserInfo(ctx *gin.Context) {
@@ -22,7 +29,6 @@ func EditUserInfo(ctx *gin.Context) {
 		return
 	}
 
-	// 参数校验
 	if utils.VerifyStringLength(editUserInfoReq.Name, "=", 0) {
 		resp.FailWithMessage(ctx, "用户名不能为空")
 		return
@@ -33,7 +39,6 @@ func EditUserInfo(ctx *gin.Context) {
 		return
 	}
 
-	// 返回给前端
 	resp.Ok(ctx)
 }
 
@@ -52,7 +57,7 @@ func GetUserBaseInfo(ctx *gin.Context) {
 
 // 获取用户列表(后台管理)
 func GetUserListManage(ctx *gin.Context) {
-	// 获取参数
+
 	var userListReq dto.UserListReq
 	if err := ctx.Bind(&userListReq); err != nil {
 		resp.FailWithMessage(ctx, "请求参数有误")
@@ -66,7 +71,6 @@ func GetUserListManage(ctx *gin.Context) {
 
 	total, roles := service.GetUserListManage(userListReq)
 
-	// 返回给前端
 	resp.OkWithData(ctx, gin.H{"list": roles, "total": total})
 }
 
@@ -78,7 +82,6 @@ func EditUserInfoManage(ctx *gin.Context) {
 		return
 	}
 
-	// 参数校验
 	if utils.VerifyStringLength(editUserInfoManageReq.Name, "=", 0) {
 		resp.FailWithMessage(ctx, "用户名不能为空")
 		return
@@ -89,13 +92,11 @@ func EditUserInfoManage(ctx *gin.Context) {
 		return
 	}
 
-	// 返回给前端
 	resp.Ok(ctx)
 }
 
 // 设置用户角色
 func EditUserRole(ctx *gin.Context) {
-	// 获取参数
 	var editUserRoleReq dto.EditUserRoleReq
 	if err := ctx.Bind(&editUserRoleReq); err != nil {
 		resp.FailWithMessage(ctx, "请求参数有误")
@@ -107,13 +108,51 @@ func EditUserRole(ctx *gin.Context) {
 		return
 	}
 
-	// 返回
 	resp.Ok(ctx)
+}
+
+// 封禁用户
+func BanUser(ctx *gin.Context) {
+	var banUserReq dto.BanUserReq
+	if err := ctx.Bind(&banUserReq); err != nil {
+		resp.FailWithMessage(ctx, "请求参数有误")
+		return
+	}
+
+	if err := service.BanUser(ctx, banUserReq); err != nil {
+		resp.FailWithMessage(ctx, err.Error())
+		return
+	}
+
+	resp.Ok(ctx)
+}
+
+// 解封用户
+func UnBanUser(ctx *gin.Context) {
+	var idReq dto.IdReq
+	if err := ctx.Bind(&idReq); err != nil {
+		resp.FailWithMessage(ctx, "请求参数有误")
+		return
+	}
+
+	if err := service.UnBanUser(ctx, idReq.ID); err != nil {
+		resp.FailWithMessage(ctx, err.Error())
+		return
+	}
+
+	resp.Ok(ctx)
+}
+
+// 获取封禁记录
+func GetUserBanRecord(ctx *gin.Context) {
+	userId := utils.StringToUint(ctx.Query("uid"))
+	userBanList := service.GetUserBanRecord(userId)
+
+	resp.OkWithData(ctx, gin.H{"list": userBanList})
 }
 
 // 删除用户
 func DeleteUser(ctx *gin.Context) {
-	// 获取参数
 	id := utils.StringToUint(ctx.Param("id"))
 
 	if err := service.DeleteUser(ctx, id); err != nil {
@@ -121,6 +160,5 @@ func DeleteUser(ctx *gin.Context) {
 		return
 	}
 
-	// 返回
 	resp.Ok(ctx)
 }

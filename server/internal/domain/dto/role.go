@@ -30,3 +30,10 @@ type EditUserRoleReq struct {
 	Uid  uint
 	Code string
 }
+
+// 封禁用户
+type BanUserReq struct {
+	Uid     uint
+	EndTime string
+	Reason  string
+}

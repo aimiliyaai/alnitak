@@ -283,6 +283,108 @@ func EditUserRole(ctx *gin.Context, editUserRoleReq dto.EditUserRoleReq) error {
 	return nil
 }
 
+// 封禁用户
+func BanUser(ctx *gin.Context, banUserReq dto.BanUserReq) error {
+	var err error
+	var endTime time.Time
+	if banUserReq.EndTime != "" {
+		endTime, err = time.Parse("2006-01-02", banUserReq.EndTime)
+		if err != nil {
+			utils.ErrorLog("时间转换失败", "user", err.Error())
+			return errors.New("时间转换失败")
+		}
+	}
+
+	// 判断封禁目标是否是自己
+	if banUserReq.Uid == ctx.GetUint("userId") {
+		return errors.New("不能封禁自己")
+	}
+
+	tx := global.Mysql.Begin()
+
+	// 将用户进行中的封禁记录更新为已取消
+	if err := tx.Model(&model.UserBan{}).Where("uid = ? and status = 0", banUserReq.Uid).Updates(
+		map[string]interface{}{
+			"status": 4,
+		},
+	).Error; err != nil {
+		tx.Rollback()
+		utils.ErrorLog("封禁用户失败", "user", err.Error())
+		return errors.New("封禁失败")
+	}
+
+	// 更新用户状态
+	if err := tx.Model(&model.User{}).Where("id = ?", banUserReq.Uid).Updates(
+		map[string]interface{}{
+			"status": 1,
+		},
+	).Error; err != nil {
+		tx.Rollback()
+		utils.ErrorLog("封禁用户失败", "user", err.Error())
+		return errors.New("封禁失败")
+	}
+
+	// 添加封禁记录
+	if err := tx.Create(&model.UserBan{
+		EndTime:  endTime,
+		Reason:   banUserReq.Reason,
+		Uid:      banUserReq.Uid,
+		Operator: ctx.GetUint("userId"),
+	}).Error; err != nil {
+		tx.Rollback()
+		utils.ErrorLog("封禁用户失败", "user", err.Error())
+		return errors.New("封禁失败")
+	}
+
+	tx.Commit()
+
+	return nil
+}
+
+// 解封用户
+func UnBanUser(ctx *gin.Context, id uint) error {
+	// 查询封禁记录
+	var banUser model.UserBan
+	if err := global.Mysql.Where("id = ?", id).First(&banUser).Error; err != nil {
+		utils.ErrorLog("解封用户失败", "user", err.Error())
+		return errors.New("解封失败")
+	}
+
+	tx := global.Mysql.Begin()
+
+	// 更新用户状态
+	if err := tx.Model(&model.User{}).Where("id = ?", banUser.Uid).Updates(
+		map[string]interface{}{
+			"status": 0,
+		},
+	).Error; err != nil {
+		tx.Rollback()
+		utils.ErrorLog("解封用户失败", "user", err.Error())
+		return errors.New("解封失败")
+	}
+
+	// 更新封禁记录
+	if err := tx.Model(&model.UserBan{}).Where("id = ?", id).Updates(
+		map[string]interface{}{
+			"status": 1,
+		},
+	).Error; err != nil {
+		tx.Rollback()
+		utils.ErrorLog("解封用户失败", "user", err.Error())
+		return errors.New("解封失败")
+	}
+
+	tx.Commit()
+
+	return nil
+}
+
+// 获取封禁记录
+func GetUserBanRecord(userId uint) (bans []vo.UserBanRecordResp) {
+	global.Mysql.Model(&model.UserBan{}).Where("uid = ?", userId).Order("id desc").Limit(3).Scan(&bans)
+	return
+}
+
 // 删除用户
 func DeleteUser(ctx *gin.Context, id uint) error {
 	if err := global.Mysql.Where("id = ?", id).Delete(&model.User{}).Error; err != nil {
@@ -372,6 +474,12 @@ func FindUserByEmailOrUsername(username string) (user model.User, err error) {
 // 通过用户名查询多个用户
 func FindUserIdsByName(names []string) (ids []uint) {
 	global.Mysql.Model(model.User{}).Where("username in (?)", names).Pluck("id", &ids)
+	return
+}
+
+// 获取用户的最新封禁信息
+func FindUserLastBan(userId uint) (ban vo.BanResp) {
+	global.Mysql.Model(&model.UserBan{}).Where("uid = ?", userId).Order("id desc").First(&ban)
 	return
 }
 

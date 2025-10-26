@@ -11,5 +11,8 @@ func StartCronTask() {
 	// 每3小时刷新一次热点
 	c.Every(3).Hours().Do(RefreshPopular)
 
+	// 每天晚上12点解封用户
+	c.Every(1).Day().At("00:00").Do(UnbanUser)
+
 	<-c.Start()
 }

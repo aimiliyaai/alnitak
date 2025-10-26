@@ -23,6 +23,12 @@ func CollectUserRoutes(r *gin.RouterGroup) {
 		userAuth.PUT("editUserInfoManage", api.EditUserInfoManage)
 		// 设置用户角色
 		userAuth.PUT("editUserRole", api.EditUserRole)
+		// 封禁用户（后台管理）
+		userAuth.PUT("banUser", api.BanUser)
+		// 解封用户（后台管理）
+		userAuth.PUT("unBanUser", api.UnBanUser)
+		// 获取封禁记录（后台管理）
+		userAuth.GET("getUserBanRecord", api.GetUserBanRecord)
 		// 删除用户
 		userAuth.DELETE("deleteUser/:id", api.DeleteUser)
 	}

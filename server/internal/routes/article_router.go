@@ -13,13 +13,13 @@ func CollectArticleRoutes(r *gin.RouterGroup) {
 	articleAuth.Use(middleware.Auth())
 	{
 		// 上传文章信息
-		articleAuth.POST("uploadArticleInfo", api.UploadArticleInfo)
+		articleAuth.POST("uploadArticleInfo", middleware.Ban(), api.UploadArticleInfo)
 		// 获取文章状态信息
 		articleAuth.GET("getArticleStatus", api.GetArticleStatus)
 		// 获取上传的文章
 		articleAuth.GET("getUploadArticle", api.GetUploadArticleList)
 		// 编辑文章信息
-		articleAuth.PUT("editArticleInfo", api.EditArticleInfo)
+		articleAuth.PUT("editArticleInfo", middleware.Ban(), api.EditArticleInfo)
 		// 删除文章
 		articleAuth.DELETE("deleteArticle/:id", api.DeleteArticle)
 		// 获取所有的文章列表

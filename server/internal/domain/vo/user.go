@@ -1,6 +1,8 @@
 package vo
 
-import "time"
+import (
+	"time"
+)
 
 const (
 	USER_BASE_INFO_FIELD = "`id`,`username`,`sign`,`avatar`,`gender`"
@@ -12,6 +14,7 @@ type UserInfoResp struct {
 	Sign       string    `json:"sign"`
 	Email      string    `json:"email"`
 	Phone      string    `json:"phone"`
+	Status     int       `json:"status"`
 	Avatar     string    `json:"avatar"`
 	Gender     int       `json:"gender"`
 	SpaceCover string    `json:"spaceCover"`
@@ -33,10 +36,26 @@ type UserInfoManageResp struct {
 	Sign       string    `json:"sign"`
 	Email      string    `json:"email"`
 	Phone      string    `json:"phone"`
+	Status     int       `json:"status"`
 	Avatar     string    `json:"avatar"`
 	Gender     int       `json:"gender"`
 	SpaceCover string    `json:"spaceCover"`
 	Birthday   time.Time `json:"birthday"`
 	CreatedAt  time.Time `json:"createdAt"`
 	Role       string    `json:"role"`
+}
+
+type UserBanRecordResp struct {
+	ID        uint      `json:"id"`
+	EndTime   time.Time `json:"endTime"`
+	Reason    string    `json:"reason"`
+	Status    int       `json:"status"`
+	Operator  uint      `json:"operator"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type BanResp struct {
+	EndTime   time.Time `json:"endTime"`
+	Reason    string    `json:"reason"`
+	CreatedAt time.Time `json:"createdAt"`
 }

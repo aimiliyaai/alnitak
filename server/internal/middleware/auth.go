@@ -61,6 +61,7 @@ func Auth() gin.HandlerFunc {
 			}
 
 			ctx.Set("userId", claims.UserId)
+			ctx.Set("status", user.Status)
 			ctx.Set("roleCode", user.Role)
 			ctx.Next()
 		} else {

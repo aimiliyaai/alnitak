@@ -18,6 +18,7 @@ type User struct {
 	Sign       string    `gorm:"type:varchar(50);comment:个性签名;default:'这个人很懒，什么都没有留下'"`
 	ClientIp   string    `gorm:"type:varchar(20);comment:客户端IP"`
 	Role       string    `gorm:"default:'001';comment:角色ID"`
+	Status     int       `gorm:"default:0;comment:用户状态:0正常、1封禁"`
 }
 
 func (table *User) TableName() string {

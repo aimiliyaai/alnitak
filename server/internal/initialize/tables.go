@@ -7,6 +7,7 @@ import (
 
 func InitTables() {
 	global.Mysql.AutoMigrate(&model.User{})           // 用户表
+	global.Mysql.AutoMigrate(&model.UserBan{})        // 用户封禁表
 	global.Mysql.AutoMigrate(&model.Role{})           // 角色表
 	global.Mysql.AutoMigrate(&model.Menu{})           // 菜单表
 	global.Mysql.AutoMigrate(&model.Api{})            // Api表
