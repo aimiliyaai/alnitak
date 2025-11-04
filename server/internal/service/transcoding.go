@@ -289,8 +289,17 @@ func getVideoInfo(input string) (info global.VideoInfo, err error) {
 
 // CPU压缩视频
 func pressingVideo(inputFile, outputFile, quality, rate, fps string) error {
-	command := []string{"-i", inputFile, "-crf", "20", "-s", quality, "-b:v", rate,
-		"-c:v", "libx264", "-r", fps, "-c:a", "aac", "-f", "mpegts", outputFile,
+	command := []string{
+		"-i", inputFile,
+		"-crf", "20",
+		"-s", quality,
+		"-b:v", rate,
+		"-c:v", "libx264",
+		"-r", fps,
+		"-c:a", "copy",
+		//"-b:a", "320k", // 高质量音频码率 (原来默认128k,现在320k)
+		"-f", "mpegts",
+		outputFile,
 	}
 
 	_, err := utils.RunCmd(exec.Command("ffmpeg", command...))
@@ -304,8 +313,17 @@ func pressingVideo(inputFile, outputFile, quality, rate, fps string) error {
 
 // GPU压缩视频
 func pressingVideoGPU(inputFile, outputFile, quality, rate, fps string) error {
-	command := []string{"-i", inputFile, "-crf", "20", "-s", quality, "-preset", "p3", "-b:v", rate,
-		"-c:v", "h264_nvenc", "-r", fps, "-c:a", "aac", "-f", "mpegts", outputFile,
+	command := []string{
+		"-i", inputFile,
+		"-crf", "20",
+		"-s", quality,
+		"-preset", "p3",
+		"-b:v", rate,
+		"-c:v", "h264_nvenc",
+		"-r", fps,
+		"-c:a", "copy", // ✅ GPU 版本同样直接拷贝音频流
+		"-f", "mpegts",
+		outputFile,
 	}
 
 	_, err := utils.RunCmd(exec.Command("ffmpeg", command...))
