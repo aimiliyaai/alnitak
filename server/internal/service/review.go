@@ -57,6 +57,9 @@ func ReviewVideoApproved(ctx *gin.Context, reviewVideoReq dto.ReviewVideoReq) er
 
 	tx.Commit()
 
+	// 清除视频信息缓存（让下次查询时重新从数据库加载最新数据）
+	cache.DelVideoInfo(reviewVideoReq.Vid)
+
 	return nil
 }
 
@@ -86,6 +89,14 @@ func ReviewVideoFailed(ctx *gin.Context, reviewVideoReq dto.ReviewVideoReq) erro
 	}
 
 	tx.Commit()
+
+	// 清除视频信息缓存和视频ID缓存
+	video, _ := FindVideoById(reviewVideoReq.Vid)
+	if video.ID != 0 {
+		cache.DelVideoInfo(reviewVideoReq.Vid)
+		cache.DelVideoId(video.PartitionId, reviewVideoReq.Vid)
+	}
+
 	return nil
 }
 

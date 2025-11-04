@@ -237,13 +237,20 @@ func GetVideoListManage(videoListReq dto.VideoListReq) (total int64, videos []vo
 
 // 删除视频(后台管理)
 func DeleteVideoManage(ctx *gin.Context, id uint) error {
+	// 先查询视频信息，用于删除缓存
+	var video model.Video
+	global.Mysql.Model(&model.Video{}).Where("id = ?", id).First(&video)
+
 	if err := global.Mysql.Where("id = ?", id).Delete(&model.Video{}).Error; err != nil {
 		utils.ErrorLog("删除视频失败", "video", err.Error())
 		return errors.New("删除视频失败")
 	}
 
-	// 删除视频信息缓存
+	// 删除视频信息缓存和视频ID缓存
 	cache.DelVideoInfo(id)
+	if video.ID != 0 {
+		cache.DelVideoId(video.PartitionId, id)
+	}
 
 	return nil
 }
@@ -381,10 +388,11 @@ func FindVideoById(id uint) (video model.Video, err error) {
 func GetVideoInfo(videoId uint) (video vo.VideoResp) {
 	video = cache.GetVideoInfo(videoId)
 	if video.ID == 0 {
+		// 缓存不存在，从数据库加载并写入缓存
 		video = VideoWriteCache(videoId)
-	} else {
-		video.Author = GetUserBaseInfo(video.Uid)
 	}
+	// 直接使用缓存中的完整数据，不再重新查询Resources和Author
+	// 如果需要最新数据，应该先调用cache.DelVideoInfo删除缓存，再调用本函数
 
 	return
 }
@@ -402,6 +410,10 @@ func VideoWriteCache(videoId uint) (video vo.VideoResp) {
 	video.Author = GetUserBaseInfo(video.Uid)
 	// 获取视频资源
 	video.Resources = GetVideoResourceByStatus(videoId, global.AUDIT_APPROVED)
+	// 确保Resources不是nil，如果是nil则初始化为空切片，避免JSON序列化为null
+	if video.Resources == nil {
+		video.Resources = []vo.ResourceResp{}
+	}
 
 	// 存到redis
 	cache.SetVideoInfo(video)
