@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"interastral-peace.com/alnitak/internal/domain/dto"
 	"interastral-peace.com/alnitak/internal/domain/model"
@@ -60,14 +61,23 @@ func ProcessVideoInfo(input string) (*dto.TranscodingInfo, error) {
 }
 
 func VideoTransCoding(transcodingInfo *dto.TranscodingInfo) {
+	utils.InfoLog(fmt.Sprintf("【转码开始】VideoID=%d, ResourceID=%d, 目标数量=%d",
+		transcodingInfo.VideoID, transcodingInfo.ResourceID, len(getTranscodingTarget(transcodingInfo))), "transcoding")
+
 	var wg sync.WaitGroup
 	targets := getTranscodingTarget(transcodingInfo)
 	wg.Add(len(targets))
+
+	successCount := 0
+	var mu sync.Mutex // 保护successCount
+
 	for _, v := range targets {
 		c := v // 处理协程引用循环变量问题
 		go func() {
 			fileName := c.Resolution + "_" + c.BitrateRate + "_" + c.FpsName
 			tsFileName := transcodingInfo.OutputDir + fileName + ".ts"
+
+			utils.InfoLog(fmt.Sprintf("【开始转码】%s", fileName), "transcoding")
 
 			// 根据配置选择使用 CPU 或 GPU
 			var err error
@@ -77,25 +87,51 @@ func VideoTransCoding(transcodingInfo *dto.TranscodingInfo) {
 				err = pressingVideo(transcodingInfo.InputFile, tsFileName, c.Resolution, c.BitrateRate, c.FPS)
 			}
 			if err != nil {
-				wg.Done()
-				return
-			}
-			// 切片
-			m3u8File, err := generateVideoSlices(tsFileName, transcodingInfo.OutputDir, fileName)
-			if err != nil {
-				wg.Done()
-				return
-			}
-			// 读取m3u8写入数据库
-			err = saveM3u8File(transcodingInfo, fileName, m3u8File)
-			if err != nil {
+				utils.ErrorLog(fmt.Sprintf("【转码失败】%s", fileName), "transcoding", err.Error())
 				wg.Done()
 				return
 			}
 
+			utils.InfoLog(fmt.Sprintf("【转码完成】%s，等待文件锁释放", fileName), "transcoding")
+
+			// Windows文件锁问题：等待文件句柄完全释放
+			time.Sleep(100 * time.Millisecond)
+
+			// 验证文件是否存在且可读
+			if !utils.IsFileExists(tsFileName) {
+				utils.ErrorLog("ts文件不存在", "transcoding", tsFileName)
+				wg.Done()
+				return
+			}
+
+			// 切片
+			utils.InfoLog(fmt.Sprintf("【开始切片】%s", fileName), "transcoding")
+			m3u8File, err := generateVideoSlices(tsFileName, transcodingInfo.OutputDir, fileName)
+			if err != nil {
+				utils.ErrorLog(fmt.Sprintf("【切片失败】%s", fileName), "transcoding", err.Error())
+				wg.Done()
+				return
+			}
+
+			utils.InfoLog(fmt.Sprintf("【切片完成】%s，保存到数据库", fileName), "transcoding")
+
+			// 读取m3u8写入数据库
+			err = saveM3u8File(transcodingInfo, fileName, m3u8File)
+			if err != nil {
+				utils.ErrorLog(fmt.Sprintf("【保存m3u8失败】%s", fileName), "transcoding", err.Error())
+				wg.Done()
+				return
+			}
+
+			utils.InfoLog(fmt.Sprintf("【成功】%s 转码完成", fileName), "transcoding")
+
 			//删除临时文件
 			os.Remove(tsFileName)
 			os.Remove(m3u8File)
+
+			mu.Lock()
+			successCount++
+			mu.Unlock()
 
 			wg.Done()
 		}()
@@ -103,29 +139,38 @@ func VideoTransCoding(transcodingInfo *dto.TranscodingInfo) {
 
 	wg.Wait()
 
-	// 上传oss
+	utils.InfoLog(fmt.Sprintf("【所有转码任务完成】成功=%d, 总数=%d", successCount, len(targets)), "transcoding")
+
+	// 上传oss - 添加panic恢复
+	defer func() {
+		if r := recover(); r != nil {
+			utils.ErrorLog("【OSS上传panic】", "transcoding", fmt.Sprintf("%v", r))
+			utils.InfoLog("【调用completeTransCoding】status=PROCESSING_FAIL（OSS panic）", "transcoding")
+			completeTransCoding(transcodingInfo.VideoID, transcodingInfo.ResourceID, global.PROCESSING_FAIL)
+		}
+	}()
+
 	if global.Config.Storage.OssType != "local" {
+		utils.InfoLog(fmt.Sprintf("【开始上传OSS】OssType=%s", global.Config.Storage.OssType), "transcoding")
+
 		files, err := os.ReadDir(transcodingInfo.OutputDir)
 		if err != nil {
 			utils.ErrorLog("读取视频文件夹失败", "oss", err.Error())
+			utils.InfoLog("【调用completeTransCoding】status=PROCESSING_FAIL（OSS失败）", "transcoding")
 			completeTransCoding(transcodingInfo.VideoID, transcodingInfo.ResourceID, global.PROCESSING_FAIL)
 			return
 		}
 
-		for _, f := range files {
-			if f.Name() == "upload.mp4" && !global.Config.Storage.UploadMp4File {
-				continue
-			}
-
-			objectKey := "video/" + transcodingInfo.DirName + "/" + f.Name()
-			filePath := "./upload/" + objectKey
-			if err := global.Storage.PutObjectFromFile(objectKey, filePath); err != nil {
-				utils.ErrorLog("文件上传OSS失败", "oss", err.Error())
-			}
-		}
+		// 并发上传文件
+		uploadCount := uploadFilesToOSS(transcodingInfo.DirName, transcodingInfo.OutputDir, files)
+		utils.InfoLog(fmt.Sprintf("【OSS上传完成】成功上传=%d/%d个文件", uploadCount, len(files)), "transcoding")
+	} else {
+		utils.InfoLog("【跳过OSS上传】使用本地存储", "transcoding")
 	}
 
 	// 更新状态
+	utils.InfoLog(fmt.Sprintf("【调用completeTransCoding】VideoID=%d, ResourceID=%d, status=WAITING_REVIEW",
+		transcodingInfo.VideoID, transcodingInfo.ResourceID), "transcoding")
 	completeTransCoding(transcodingInfo.VideoID, transcodingInfo.ResourceID, global.WAITING_REVIEW)
 }
 
@@ -316,39 +361,180 @@ func saveM3u8File(transcodingInfo *dto.TranscodingInfo, fileName, m3u8File strin
 	return nil
 }
 
+// 并发上传文件到OSS
+func uploadFilesToOSS(dirName, outputDir string, files []os.DirEntry) int {
+	const maxConcurrency = 10 // 最大并发数
+	utils.InfoLog(fmt.Sprintf("【OSS准备上传】文件总数=%d, 并发数=%d", len(files), maxConcurrency), "transcoding")
+
+	// 创建任务通道和结果通道
+	type uploadTask struct {
+		index int
+		file  os.DirEntry
+	}
+
+	tasks := make(chan uploadTask, len(files))
+	results := make(chan bool, len(files))
+
+	// 启动worker池
+	var wg sync.WaitGroup
+	for i := range maxConcurrency {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for task := range tasks {
+				fileName := task.file.Name()
+
+				// 跳过upload.mp4如果配置不上传
+				if fileName == "upload.mp4" && !global.Config.Storage.UploadMp4File {
+					utils.InfoLog("【OSS跳过】upload.mp4 (配置不上传原文件)", "transcoding")
+					results <- false
+					continue
+				}
+
+				objectKey := "video/" + dirName + "/" + fileName
+				filePath := outputDir + fileName
+
+				utils.InfoLog(fmt.Sprintf("【OSS上传中】Worker%d: %d/%d %s", workerID, task.index+1, len(files), fileName), "transcoding")
+
+				// 上传文件,失败重试1次
+				err := global.Storage.PutObjectFromFile(objectKey, filePath)
+				if err != nil {
+					utils.ErrorLog(fmt.Sprintf("【OSS上传失败】%s,重试中...", fileName), "oss", err.Error())
+					// 重试一次
+					time.Sleep(500 * time.Millisecond)
+					err = global.Storage.PutObjectFromFile(objectKey, filePath)
+				}
+
+				if err != nil {
+					utils.ErrorLog(fmt.Sprintf("【OSS上传失败】%s (重试后仍失败)", fileName), "oss", err.Error())
+					results <- false
+				} else {
+					results <- true
+				}
+			}
+		}(i)
+	}
+
+	// 发送任务
+	for i, file := range files {
+		if !file.IsDir() { // 只上传文件,不上传目录
+			tasks <- uploadTask{index: i, file: file}
+		}
+	}
+	close(tasks)
+
+	// 等待所有worker完成
+	wg.Wait()
+	close(results)
+
+	// 统计成功数量
+	successCount := 0
+	for success := range results {
+		if success {
+			successCount++
+		}
+	}
+
+	return successCount
+}
+
 // 完成转码
 func completeTransCoding(videoId, resourceId uint, status int) error {
+	utils.InfoLog("========== completeTransCoding 开始 ==========", "transcoding")
+	utils.InfoLog(fmt.Sprintf("【入参】VideoID=%d, ResourceID=%d, 期望Status=%d", videoId, resourceId, status), "transcoding")
+
 	// 查询是否存在转码成功的视频文件
 	var videoFileCount int64
 	global.Mysql.Model(&model.VideoIndexFile{}).Where("resource_id = ?", resourceId).Count(&videoFileCount)
+	utils.InfoLog(fmt.Sprintf("【数据库查询】video_index_file表中resource_id=%d的记录数=%d", resourceId, videoFileCount), "transcoding")
+
 	if videoFileCount == 0 {
 		status = global.PROCESSING_FAIL
+		utils.InfoLog("【状态修改】未生成任何视频文件，status改为PROCESSING_FAIL(3000)", "transcoding")
 	}
 
+	utils.InfoLog(fmt.Sprintf("【开始事务】准备更新status=%d", status), "transcoding")
+
+	tx := global.Mysql.Begin()
+
+	// 查询当前资源状态
+	var currentResource model.Resource
+	tx.Model(&model.Resource{}).Where("id = ?", resourceId).First(&currentResource)
+	utils.InfoLog(fmt.Sprintf("【事务查询】ResourceID=%d 当前status=%d", resourceId, currentResource.Status), "transcoding")
+
 	// 更新资源状态
-	if err := global.Mysql.Model(&model.Resource{}).Where("id = ?", resourceId).Updates(
-		map[string]interface{}{
+	result := tx.Model(&model.Resource{}).Where("id = ?", resourceId).Updates(
+		map[string]any{
 			"status": status,
 		},
-	).Error; err != nil {
-		utils.ErrorLog("更新资源状态失败", "transcoding", err.Error())
-		return err
+	)
+	if result.Error != nil {
+		tx.Rollback()
+		utils.ErrorLog("【事务失败】更新资源状态失败", "transcoding", result.Error.Error())
+		return result.Error
 	}
+	utils.InfoLog(fmt.Sprintf("【事务执行】更新resource表 ResourceID=%d status=%d, 影响行数=%d", resourceId, status, result.RowsAffected), "transcoding")
 
 	// 获取转码中资源的数量
 	var count int64
-	global.Mysql.Model(&model.Resource{}).Where("vid = ? and status = ?", videoId, global.VIDEO_PROCESSING).Count(&count)
-	// 如果没有转码中的视频，则更新视频为待审核
+	tx.Model(&model.Resource{}).Where("vid = ? and status = ?", videoId, global.VIDEO_PROCESSING).Count(&count)
+	utils.InfoLog(fmt.Sprintf("【事务查询】VideoID=%d 仍在转码中(status=200)的资源数=%d", videoId, count), "transcoding")
+
+	// 如果没有转码中的视频，则更新视频状态为待审核
 	if count == 0 {
-		if err := global.Mysql.Model(&model.Video{}).Where("id = ? and status = ?", videoId, global.SUBMIT_REVIEW).Updates(
-			map[string]interface{}{
-				"status": global.WAITING_REVIEW,
-			},
-		).Error; err != nil {
-			utils.ErrorLog("更新资源状态失败", "transcoding", err.Error())
-			return err
+		utils.InfoLog("【判断】所有资源转码已完成，准备更新video状态", "transcoding")
+
+		// 检查所有资源是否都失败了
+		var totalCount int64
+		var failedCount int64
+		tx.Model(&model.Resource{}).Where("vid = ?", videoId).Count(&totalCount)
+		tx.Model(&model.Resource{}).Where("vid = ? and status = ?", videoId, global.PROCESSING_FAIL).Count(&failedCount)
+		utils.InfoLog(fmt.Sprintf("【事务查询】VideoID=%d 总资源数=%d, 失败资源数=%d", videoId, totalCount, failedCount), "transcoding")
+
+		var videoStatus int
+		if failedCount == totalCount {
+			// 所有资源都失败，视频状态设为处理失败
+			videoStatus = global.PROCESSING_FAIL
+			utils.InfoLog("【判断】全部资源失败，video status设为PROCESSING_FAIL(3000)", "transcoding")
+		} else {
+			// 至少有一个资源成功，视频状态设为待审核
+			videoStatus = global.WAITING_REVIEW
+			utils.InfoLog("【判断】至少一个资源成功，video status设为WAITING_REVIEW(500)", "transcoding")
 		}
+
+		// 查询当前视频状态
+		var currentVideo model.Video
+		tx.Model(&model.Video{}).Where("id = ?", videoId).First(&currentVideo)
+		utils.InfoLog(fmt.Sprintf("【事务查询】VideoID=%d 当前status=%d", videoId, currentVideo.Status), "transcoding")
+
+		// 更新视频状态（不限制为SUBMIT_REVIEW，允许从CREATED_VIDEO等状态更新）
+		videoResult := tx.Model(&model.Video{}).Where("id = ? and status NOT IN (?, ?)", videoId, global.AUDIT_APPROVED, global.REVIEW_FAILED).Updates(
+			map[string]any{
+				"status": videoStatus,
+			},
+		)
+		if videoResult.Error != nil {
+			tx.Rollback()
+			utils.ErrorLog("【事务失败】更新视频状态失败", "transcoding", videoResult.Error.Error())
+			return videoResult.Error
+		}
+		utils.InfoLog(fmt.Sprintf("【事务执行】更新video表 VideoID=%d status=%d, WHERE条件: status NOT IN (0,2000), 影响行数=%d",
+			videoId, videoStatus, videoResult.RowsAffected), "transcoding")
+
+		if videoResult.RowsAffected == 0 {
+			utils.InfoLog(fmt.Sprintf("【警告】video表更新影响0行！可能video.status已经是0或2000，当前status=%d", currentVideo.Status), "transcoding")
+		}
+	} else {
+		utils.InfoLog(fmt.Sprintf("【跳过】还有%d个资源在转码中，暂不更新video状态", count), "transcoding")
 	}
+
+	if err := tx.Commit().Error; err != nil {
+		utils.ErrorLog("【事务失败】提交事务失败", "transcoding", err.Error())
+		return err
+	}
+
+	utils.InfoLog("【事务提交】成功", "transcoding")
+	utils.InfoLog("========== completeTransCoding 结束 ==========", "transcoding")
 
 	return nil
 }
