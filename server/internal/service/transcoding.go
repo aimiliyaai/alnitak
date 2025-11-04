@@ -297,9 +297,11 @@ func pressingVideo(inputFile, outputFile, quality, rate, fps string) error {
 		"-b:v", rate,
 		"-c:v", "libx264",
 		"-r", fps,
+		"-vsync", "cfr", // 确保恒定帧率，避免帧数不匹配
 		"-c:a", "copy",
 		//"-b:a", "320k", // 高质量音频码率 (原来默认128k,现在320k)
 		"-f", "mpegts",
+		"-copyts", // 保留原始时间戳
 		outputFile,
 	}
 
@@ -322,8 +324,10 @@ func pressingVideoGPU(inputFile, outputFile, quality, rate, fps string) error {
 		"-b:v", rate,
 		"-c:v", "h264_nvenc",
 		"-r", fps,
-		"-c:a", "copy", // ✅ GPU 版本同样直接拷贝音频流
+		"-vsync", "cfr", // 确保恒定帧率，避免帧数不匹配
+		"-c:a", "copy",  // ✅ GPU 版本同样直接拷贝音频流
 		"-f", "mpegts",
+		"-copyts", // 保留原始时间戳
 		outputFile,
 	}
 
@@ -340,9 +344,16 @@ func generateVideoSlices(inputFile, outputDir, outputName string) (string, error
 	outputM3U8 := outputDir + outputName + ".m3u8"
 	outputTs := outputDir + outputName + "_%05d.ts"
 
-	command := []string{"-i", inputFile, "-c", "copy",
-		"-map", "0", "-f", "segment", "-segment_list",
-		outputM3U8, "-segment_time", "10", outputTs,
+	command := []string{
+		"-i", inputFile,
+		"-c", "copy",
+		"-map", "0",
+		"-f", "segment",
+		"-segment_list", outputM3U8,
+		"-segment_time", "10",
+		"-segment_list_flags", "+live", // 确保最后一个片段被正确写入
+		"-break_non_keyframes", "1",    // 允许在非关键帧处切割，避免丢失尾部内容
+		outputTs,
 	}
 
 	_, err := utils.RunCmd(exec.Command("ffmpeg", command...))
