@@ -51,14 +51,18 @@ func ReviewVideoApproved(ctx *gin.Context, reviewVideoReq dto.ReviewVideoReq) er
 		return errors.New("更新状态失败")
 	}
 
-	// 视频ID添加到redis中
+	// 先提交事务
+	if err := tx.Commit().Error; err != nil {
+		utils.ErrorLog("提交事务失败", "review", err.Error())
+		return errors.New("更新状态失败")
+	}
+
+	// 事务成功后再操作缓存
 	video, _ := FindVideoById(reviewVideoReq.Vid)
-	cache.SetVideoId(global.VideoPartitionMap[video.PartitionId], video.ID)
-
-	tx.Commit()
-
-	// 清除视频信息缓存（让下次查询时重新从数据库加载最新数据）
+	// 先清除视频信息缓存（让下次查询时重新从数据库加载最新数据）
 	cache.DelVideoInfo(reviewVideoReq.Vid)
+	// 再添加视频ID到redis分区列表
+	cache.SetVideoId(global.VideoPartitionMap[video.PartitionId], video.ID)
 
 	return nil
 }

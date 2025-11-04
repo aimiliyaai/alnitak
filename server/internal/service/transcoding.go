@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"interastral-peace.com/alnitak/internal/cache"
 	"interastral-peace.com/alnitak/internal/domain/dto"
 	"interastral-peace.com/alnitak/internal/domain/model"
 	"interastral-peace.com/alnitak/internal/global"
@@ -552,6 +553,11 @@ func completeTransCoding(videoId, resourceId uint, status int) error {
 	}
 
 	utils.InfoLog("【事务提交】成功", "transcoding")
+
+	// 转码完成后删除视频缓存，让下次查询时重新加载最新状态
+	cache.DelVideoInfo(videoId)
+	utils.InfoLog(fmt.Sprintf("【缓存清理】删除VideoID=%d的缓存", videoId), "transcoding")
+
 	utils.InfoLog("========== completeTransCoding 结束 ==========", "transcoding")
 
 	return nil
