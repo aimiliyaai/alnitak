@@ -25,6 +25,51 @@ type TranscodingTarget struct {
 	FpsName     string // 帧率名称
 }
 
+// 全局转码并发控制
+var (
+	transcodingSemaphore chan struct{} // 信号量，控制同时转码的任务数
+	semaphoreOnce        sync.Once
+	gpuAvailable         = true        // GPU是否可用
+	gpuCheckMutex        sync.RWMutex  // 保护GPU状态的读写锁
+	gpuFailCount         = 0           // GPU连续失败次数
+	maxGpuFailCount      = 3           // 最大允许GPU失败次数
+)
+
+// 初始化转码并发控制（根据CPU核心数或配置）
+func initTranscodingSemaphore() {
+	semaphoreOnce.Do(func() {
+		// 默认允许2个转码任务并发（可根据实际服务器配置调整）
+		maxConcurrentTranscoding := 2
+		if global.Config.Transcoding.UseGpu {
+			// GPU模式下可以稍微增加并发数
+			maxConcurrentTranscoding = 3
+		}
+		transcodingSemaphore = make(chan struct{}, maxConcurrentTranscoding)
+		utils.InfoLog(fmt.Sprintf("【转码并发控制初始化】最大并发数=%d", maxConcurrentTranscoding), "transcoding")
+	})
+}
+
+// 检查GPU是否可用
+func checkGPUAvailable() bool {
+	gpuCheckMutex.RLock()
+	defer gpuCheckMutex.RUnlock()
+	return gpuAvailable
+}
+
+// GPU失败处理
+func handleGPUFailure() {
+	gpuCheckMutex.Lock()
+	defer gpuCheckMutex.Unlock()
+
+	gpuFailCount++
+	utils.InfoLog(fmt.Sprintf("【GPU失败】失败次数=%d/%d", gpuFailCount, maxGpuFailCount), "transcoding")
+
+	if gpuFailCount >= maxGpuFailCount {
+		gpuAvailable = false
+		utils.InfoLog("【GPU禁用】连续失败次数达到阈值，自动切换到CPU模式", "transcoding")
+	}
+}
+
 // 生成封面
 func GenerateCover(inputFile, outputFile string) error {
 	command := []string{"-i", inputFile, "-vframes", "1", "-y", outputFile}
@@ -62,6 +107,9 @@ func ProcessVideoInfo(input string) (*dto.TranscodingInfo, error) {
 }
 
 func VideoTransCoding(transcodingInfo *dto.TranscodingInfo) {
+	// 初始化并发控制
+	initTranscodingSemaphore()
+
 	utils.InfoLog(fmt.Sprintf("【转码开始】VideoID=%d, ResourceID=%d, 目标数量=%d",
 		transcodingInfo.VideoID, transcodingInfo.ResourceID, len(getTranscodingTarget(transcodingInfo))), "transcoding")
 
@@ -75,18 +123,48 @@ func VideoTransCoding(transcodingInfo *dto.TranscodingInfo) {
 	for _, v := range targets {
 		c := v // 处理协程引用循环变量问题
 		go func() {
+			// 获取转码资源锁（控制并发数）
+			transcodingSemaphore <- struct{}{}
+			defer func() { <-transcodingSemaphore }() // 释放资源锁
+
 			fileName := c.Resolution + "_" + c.BitrateRate + "_" + c.FpsName
 			tsFileName := transcodingInfo.OutputDir + fileName + ".ts"
 
 			utils.InfoLog(fmt.Sprintf("【开始转码】%s", fileName), "transcoding")
 
-			// 根据配置选择使用 CPU 或 GPU
+			// 智能选择转码方式：GPU优先，失败时自动降级到CPU
 			var err error
-			if global.Config.Transcoding.UseGpu {
+			useGpu := global.Config.Transcoding.UseGpu && checkGPUAvailable()
+
+			if useGpu {
+				utils.InfoLog(fmt.Sprintf("【使用GPU转码】%s", fileName), "transcoding")
 				err = pressingVideoGPU(transcodingInfo.InputFile, tsFileName, c.Resolution, c.BitrateRate, c.FPS)
+
+				if err != nil {
+					utils.ErrorLog(fmt.Sprintf("【GPU转码失败】%s，尝试切换到CPU", fileName), "transcoding", err.Error())
+					handleGPUFailure()
+
+					// GPU失败后尝试使用CPU
+					utils.InfoLog(fmt.Sprintf("【降级到CPU转码】%s", fileName), "transcoding")
+					err = pressingVideo(transcodingInfo.InputFile, tsFileName, c.Resolution, c.BitrateRate, c.FPS)
+				} else {
+					// GPU转码成功，重置失败计数
+					gpuCheckMutex.Lock()
+					if gpuFailCount > 0 {
+						gpuFailCount = 0
+						utils.InfoLog("【GPU恢复】转码成功，重置失败计数", "transcoding")
+					}
+					gpuCheckMutex.Unlock()
+				}
 			} else {
+				if global.Config.Transcoding.UseGpu && !checkGPUAvailable() {
+					utils.InfoLog(fmt.Sprintf("【使用CPU转码】%s（GPU已禁用）", fileName), "transcoding")
+				} else {
+					utils.InfoLog(fmt.Sprintf("【使用CPU转码】%s", fileName), "transcoding")
+				}
 				err = pressingVideo(transcodingInfo.InputFile, tsFileName, c.Resolution, c.BitrateRate, c.FPS)
 			}
+
 			if err != nil {
 				utils.ErrorLog(fmt.Sprintf("【转码失败】%s", fileName), "transcoding", err.Error())
 				wg.Done()
@@ -331,9 +409,22 @@ func pressingVideoGPU(inputFile, outputFile, quality, rate, fps string) error {
 		outputFile,
 	}
 
-	_, err := utils.RunCmd(exec.Command("ffmpeg", command...))
+	out, err := utils.RunCmd(exec.Command("ffmpeg", command...))
 	if err != nil {
-		utils.ErrorLog("压缩视频失败", "transcoding", err.Error())
+		errMsg := err.Error()
+		outStr := out.String()
+
+		// 检测是否是GPU相关错误
+		if strings.Contains(outStr, "No NVENC capable devices found") ||
+			strings.Contains(outStr, "Cannot load nvcuda.dll") ||
+			strings.Contains(outStr, "CUDA driver version is insufficient") ||
+			strings.Contains(outStr, "h264_nvenc") ||
+			strings.Contains(errMsg, "nvenc") {
+			utils.ErrorLog("GPU不可用或驱动异常", "transcoding", outStr)
+			return fmt.Errorf("GPU error: %s", outStr)
+		}
+
+		utils.ErrorLog("GPU压缩视频失败", "transcoding", errMsg)
 		return err
 	}
 
