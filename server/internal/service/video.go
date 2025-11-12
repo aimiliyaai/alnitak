@@ -191,10 +191,14 @@ func DeleteVideo(ctx *gin.Context, id uint) error {
 		return errors.New("删除视频失败")
 	}
 
-	// 删除缓存中的视频ID信息
+	// 清理所有相关缓存
+	// 1. 删除分区视频列表中的视频ID
 	cache.DelVideoId(video.PartitionId, video.ID)
 
-	// 删除视频信息缓存
+	// 2. 删除热门视频列表中的视频ID
+	cache.DelSingleHotVideoId(video.ID)
+
+	// 3. 删除视频信息缓存
 	cache.DelVideoInfo(id)
 
 	return nil
@@ -264,11 +268,17 @@ func DeleteVideoManage(ctx *gin.Context, id uint) error {
 		return errors.New("删除视频失败")
 	}
 
-	// 删除视频信息缓存和视频ID缓存
-	cache.DelVideoInfo(id)
+	// 清理所有相关缓存
 	if video.ID != 0 {
+		// 1. 删除分区视频列表中的视频ID
 		cache.DelVideoId(video.PartitionId, id)
+
+		// 2. 删除热门视频列表中的视频ID
+		cache.DelSingleHotVideoId(id)
 	}
+
+	// 3. 删除视频信息缓存
+	cache.DelVideoInfo(id)
 
 	return nil
 }
